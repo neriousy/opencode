@@ -312,7 +312,7 @@ export namespace SessionPrompt {
           continue
         }
 
-        const unprocessed = queued.filter((x) => x.messageID > result.info.id)
+        const unprocessed = queued.filter((x) => x.messageID > userMsg.info.id)
         if (unprocessed.length) {
           continue
         }
