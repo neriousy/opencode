@@ -23,10 +23,15 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
 
   const [grouped, { refetch }] = createResource(
     () => {
-      // When items is a function (not async filter function), call it to track changes
       const itemsValue =
         typeof props.items === "function"
-          ? (props.items as () => T[])() // Call synchronous function to track it
+          ? (() => {
+              const func = props.items as (...args: any[]) => any
+              if (func.length === 0) {
+                return func()
+              }
+              return props.items
+            })()
           : props.items
 
       return {
@@ -35,8 +40,10 @@ export function useFilteredList<T>(props: FilteredListProps<T>) {
       }
     },
     async ({ filter, items }) => {
-      const needle = filter?.toLowerCase()
-      const all = (items ?? (await (props.items as (filter: string) => T[] | Promise<T[]>)(needle))) || []
+      const needle = (filter ?? "").toLowerCase()
+      const all = Array.isArray(items)
+        ? items
+        : (await (props.items as (filter: string) => T[] | Promise<T[]>)(needle)) || []
       const result = pipe(
         all,
         (x) => {
