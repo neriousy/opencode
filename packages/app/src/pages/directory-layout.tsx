@@ -1,9 +1,8 @@
-import { createMemo, Show, type ParentProps } from "solid-js"
+import { createEffect, createMemo, Show, type ParentProps } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
-
 import { base64Decode } from "@opencode-ai/util/encode"
 import { DataProvider } from "@opencode-ai/ui/context"
 import { iife } from "@opencode-ai/util/iife"
@@ -22,6 +21,7 @@ export default function Layout(props: ParentProps) {
           {iife(() => {
             const sync = useSync()
             const sdk = useSDK()
+            let lastWorktree: string | undefined
             const respond = (input: {
               sessionID: string
               permissionID: string
@@ -36,6 +36,13 @@ export default function Layout(props: ParentProps) {
             const navigateToSession = (sessionID: string) => {
               navigate(`/${params.dir}/session/${sessionID}`)
             }
+
+            createEffect(() => {
+              const worktree = sync.project?.worktree
+              if (!worktree || worktree === lastWorktree) return
+              lastWorktree = worktree
+              void sdk.client.global.cwd.set({directory: worktree})
+            })
 
             return (
               <DataProvider

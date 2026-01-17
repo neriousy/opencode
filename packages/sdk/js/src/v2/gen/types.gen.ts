@@ -904,6 +904,10 @@ export type GlobalEvent = {
   payload: Event
 }
 
+export type WorkingDirectory = {
+  directory: string
+}
+
 export type BadRequestError = {
   data: unknown
   errors: Array<{
@@ -2169,6 +2173,24 @@ export type GlobalDisposeResponses = {
 }
 
 export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeResponses]
+
+export type GlobalCwdSetData = {
+  body?: {
+    directory: string
+  }
+  path?: never
+  query?: never
+  url: "/global/cwd"
+}
+
+export type GlobalCwdSetResponses = {
+  /**
+   * Updated working directory
+   */
+  200: WorkingDirectory
+}
+
+export type GlobalCwdSetResponse = GlobalCwdSetResponses[keyof GlobalCwdSetResponses]
 
 export type ProjectListData = {
   body?: never

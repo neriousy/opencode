@@ -32,6 +32,7 @@ import type {
   FindSymbolsResponses,
   FindTextResponses,
   FormatterStatusResponses,
+  GlobalCwdSetResponses,
   GlobalDisposeResponses,
   GlobalEventResponses,
   GlobalHealthResponses,
@@ -207,6 +208,32 @@ class HeyApiRegistry<T> {
   }
 }
 
+export class Cwd extends HeyApiClient {
+  /**
+   * Set working directory
+   *
+   * Update the OpenCode server process working directory.
+   */
+  public set<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "directory" }] }])
+    return (options?.client ?? this.client).post<GlobalCwdSetResponses, unknown, ThrowOnError>({
+      url: "/global/cwd",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Global extends HeyApiClient {
   /**
    * Get health
@@ -242,6 +269,11 @@ export class Global extends HeyApiClient {
       url: "/global/dispose",
       ...options,
     })
+  }
+
+  private _cwd?: Cwd
+  get cwd(): Cwd {
+    return (this._cwd ??= new Cwd({ client: this.client }))
   }
 }
 

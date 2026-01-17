@@ -1,7 +1,8 @@
 import { Hono } from "hono"
-import { describeRoute, resolver } from "hono-openapi"
+import { describeRoute, resolver, validator } from "hono-openapi"
 import { streamSSE } from "hono/streaming"
 import z from "zod"
+import { existsSync } from "node:fs"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
 import { Instance } from "../../project/instance"
@@ -130,6 +131,49 @@ export const GlobalRoutes = lazy(() =>
           },
         })
         return c.json(true)
+      },
+    )
+    .post(
+      "/cwd",
+      describeRoute({
+        summary: "Set working directory",
+        description: "Update the OpenCode server process working directory.",
+        operationId: "global.cwd.set",
+        responses: {
+          200: {
+            description: "Updated working directory",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z
+                    .object({
+                      directory: z.string(),
+                    })
+                    .meta({ ref: "WorkingDirectory" }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      validator(
+        "json",
+        z.object({
+          directory: z.string().min(1),
+        }),
+      ),
+      async (c) => {
+        const { directory } = c.req.valid("json")
+        if (!existsSync(directory)) {
+          return c.json({ error: "Directory does not exist" }, 400)
+        }
+        try {
+          process.chdir(directory)
+        } catch (err) {
+          log.error("failed to change cwd", { directory, err })
+          return c.json({ error: "Failed to change directory" }, 500)
+        }
+        return c.json({ directory: process.cwd() })
       },
     ),
 )
