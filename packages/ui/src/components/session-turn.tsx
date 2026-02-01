@@ -579,7 +579,7 @@ export function SessionTurn(
                               </Match>
                             </Switch>
                             <Switch>
-                              <Match when={retry()}>
+                              <Match when={retry() && isLastUserMessage()}>
                                 <span data-slot="session-turn-retry-message">
                                   {(() => {
                                     const r = retry()
