@@ -78,6 +78,162 @@ const createPlatform = (password: Accessor<string | null>): Platform => {
     return commands.wslPath(result, "linux").catch(() => result) as any
   }
 
+  const stores = (() => {
+    type StoreLike = {
+      get(key: string): Promise<string | null | undefined>
+      set(key: string, value: string): Promise<unknown>
+      delete(key: string): Promise<unknown>
+      clear(): Promise<unknown>
+      keys(): Promise<string[]>
+      length(): Promise<number>
+    }
+
+    const WRITE_DEBOUNCE_MS = 250
+
+    const storeCache = new Map<string, Promise<StoreLike>>()
+    const apiCache = new Map<string, AsyncStorage & { flush: () => Promise<void> }>()
+    const memoryCache = new Map<string, StoreLike>()
+
+    const flushAll = async () => {
+      const apis = Array.from(apiCache.values())
+      await Promise.all(apis.map((api) => api.flush().catch(() => undefined)))
+    }
+
+    if ("addEventListener" in globalThis) {
+      const handleVisibility = () => {
+        if (document.visibilityState !== "hidden") return
+        void flushAll()
+      }
+
+      window.addEventListener("pagehide", () => void flushAll())
+      document.addEventListener("visibilitychange", handleVisibility)
+    }
+
+    const createMemoryStore = () => {
+      const data = new Map<string, string>()
+      const store: StoreLike = {
+        get: async (key) => data.get(key),
+        set: async (key, value) => {
+          data.set(key, value)
+        },
+        delete: async (key) => {
+          data.delete(key)
+        },
+        clear: async () => {
+          data.clear()
+        },
+        keys: async () => Array.from(data.keys()),
+        length: async () => data.size,
+      }
+      return store
+    }
+
+    const getStore = (name: string) => {
+      const cached = storeCache.get(name)
+      if (cached) return cached
+
+      const store = Store.load(name).catch((error) => {
+        console.error("Failed to load tauri store", name, error)
+        const cached = memoryCache.get(name)
+        if (cached) return cached
+
+        const memory = createMemoryStore()
+        memoryCache.set(name, memory)
+        return memory
+      })
+
+      storeCache.set(name, store)
+      return store
+    }
+
+    const createStorage = (name: string) => {
+      const pending = new Map<string, string | null>()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      let flushing: Promise<void> | undefined
+
+      const flush = async () => {
+        if (flushing) return flushing
+
+        flushing = (async () => {
+          const store = await getStore(name)
+          while (pending.size > 0) {
+            const batch = Array.from(pending.entries())
+            pending.clear()
+            for (const [key, value] of batch) {
+              if (value === null) {
+                await store.delete(key).catch(() => undefined)
+              } else {
+                await store.set(key, value).catch(() => undefined)
+              }
+            }
+          }
+        })().finally(() => {
+          flushing = undefined
+        })
+
+        return flushing
+      }
+
+      const schedule = () => {
+        if (timer) return
+        timer = setTimeout(() => {
+          timer = undefined
+          void flush()
+        }, WRITE_DEBOUNCE_MS)
+      }
+
+      const api: AsyncStorage & { flush: () => Promise<void> } = {
+        flush,
+        getItem: async (key: string) => {
+          const next = pending.get(key)
+          if (next !== undefined) return next
+
+          const store = await getStore(name)
+          const value = await store.get(key).catch(() => null)
+          if (value === undefined) return null
+          return value
+        },
+        setItem: async (key: string, value: string) => {
+          pending.set(key, value)
+          schedule()
+        },
+        removeItem: async (key: string) => {
+          pending.set(key, null)
+          schedule()
+        },
+        clear: async () => {
+          pending.clear()
+          const store = await getStore(name)
+          await store.clear().catch(() => undefined)
+        },
+        key: async (index: number) => {
+          const store = await getStore(name)
+          return (await store.keys().catch(() => []))[index]
+        },
+        getLength: async () => {
+          const store = await getStore(name)
+          return await store.length().catch(() => 0)
+        },
+        get length() {
+          return api.getLength()
+        },
+      }
+
+      return api
+    }
+
+    const storage: Platform["storage"] = (name = "default.dat") => {
+      const cached = apiCache.get(name)
+      if (cached) return cached
+
+      const api = createStorage(name)
+      apiCache.set(name, api)
+      return api
+    }
+
+    return { storage, flushAll }
+  })()
+
   return {
     platform: "desktop",
     os,
@@ -139,158 +295,7 @@ const createPlatform = (password: Accessor<string | null>): Platform => {
       window.history.forward()
     },
 
-    storage: (() => {
-      type StoreLike = {
-        get(key: string): Promise<string | null | undefined>
-        set(key: string, value: string): Promise<unknown>
-        delete(key: string): Promise<unknown>
-        clear(): Promise<unknown>
-        keys(): Promise<string[]>
-        length(): Promise<number>
-      }
-
-      const WRITE_DEBOUNCE_MS = 250
-
-      const storeCache = new Map<string, Promise<StoreLike>>()
-      const apiCache = new Map<string, AsyncStorage & { flush: () => Promise<void> }>()
-      const memoryCache = new Map<string, StoreLike>()
-
-      const flushAll = async () => {
-        const apis = Array.from(apiCache.values())
-        await Promise.all(apis.map((api) => api.flush().catch(() => undefined)))
-      }
-
-      if ("addEventListener" in globalThis) {
-        const handleVisibility = () => {
-          if (document.visibilityState !== "hidden") return
-          void flushAll()
-        }
-
-        window.addEventListener("pagehide", () => void flushAll())
-        document.addEventListener("visibilitychange", handleVisibility)
-      }
-
-      const createMemoryStore = () => {
-        const data = new Map<string, string>()
-        const store: StoreLike = {
-          get: async (key) => data.get(key),
-          set: async (key, value) => {
-            data.set(key, value)
-          },
-          delete: async (key) => {
-            data.delete(key)
-          },
-          clear: async () => {
-            data.clear()
-          },
-          keys: async () => Array.from(data.keys()),
-          length: async () => data.size,
-        }
-        return store
-      }
-
-      const getStore = (name: string) => {
-        const cached = storeCache.get(name)
-        if (cached) return cached
-
-        const store = Store.load(name).catch(() => {
-          const cached = memoryCache.get(name)
-          if (cached) return cached
-
-          const memory = createMemoryStore()
-          memoryCache.set(name, memory)
-          return memory
-        })
-
-        storeCache.set(name, store)
-        return store
-      }
-
-      const createStorage = (name: string) => {
-        const pending = new Map<string, string | null>()
-        let timer: ReturnType<typeof setTimeout> | undefined
-        let flushing: Promise<void> | undefined
-
-        const flush = async () => {
-          if (flushing) return flushing
-
-          flushing = (async () => {
-            const store = await getStore(name)
-            while (pending.size > 0) {
-              const batch = Array.from(pending.entries())
-              pending.clear()
-              for (const [key, value] of batch) {
-                if (value === null) {
-                  await store.delete(key).catch(() => undefined)
-                } else {
-                  await store.set(key, value).catch(() => undefined)
-                }
-              }
-            }
-          })().finally(() => {
-            flushing = undefined
-          })
-
-          return flushing
-        }
-
-        const schedule = () => {
-          if (timer) return
-          timer = setTimeout(() => {
-            timer = undefined
-            void flush()
-          }, WRITE_DEBOUNCE_MS)
-        }
-
-        const api: AsyncStorage & { flush: () => Promise<void> } = {
-          flush,
-          getItem: async (key: string) => {
-            const next = pending.get(key)
-            if (next !== undefined) return next
-
-            const store = await getStore(name)
-            const value = await store.get(key).catch(() => null)
-            if (value === undefined) return null
-            return value
-          },
-          setItem: async (key: string, value: string) => {
-            pending.set(key, value)
-            schedule()
-          },
-          removeItem: async (key: string) => {
-            pending.set(key, null)
-            schedule()
-          },
-          clear: async () => {
-            pending.clear()
-            const store = await getStore(name)
-            await store.clear().catch(() => undefined)
-          },
-          key: async (index: number) => {
-            const store = await getStore(name)
-            return (await store.keys().catch(() => []))[index]
-          },
-          getLength: async () => {
-            const store = await getStore(name)
-            return await store.length().catch(() => 0)
-          },
-          get length() {
-            return api.getLength()
-          },
-        }
-
-        return api
-      }
-
-      return (name = "default.dat") => {
-        const cached = apiCache.get(name)
-        if (cached) return cached
-
-        const api = createStorage(name)
-        apiCache.set(name, api)
-        return api
-      }
-    })(),
+    storage: stores.storage,
 
     checkUpdate: async () => {
       if (!UPDATER_ENABLED) return { updateAvailable: false }
@@ -307,11 +312,13 @@ const createPlatform = (password: Accessor<string | null>): Platform => {
 
     update: async () => {
       if (!UPDATER_ENABLED || !update) return
+      await stores.flushAll().catch(() => undefined)
       if (ostype() === "windows") await commands.killSidecar().catch(() => undefined)
       await update.install().catch(() => undefined)
     },
 
     restart: async () => {
+      await stores.flushAll().catch(() => undefined)
       await commands.killSidecar().catch(() => undefined)
       await relaunch()
     },
