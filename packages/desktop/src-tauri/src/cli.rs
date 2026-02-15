@@ -13,6 +13,8 @@ use crate::constants::{SETTINGS_STORE, WSL_ENABLED_KEY};
 
 const CLI_INSTALL_DIR: &str = ".opencode/bin";
 const CLI_BINARY_NAME: &str = "opencode";
+#[cfg(target_os = "macos")]
+const DESKTOP_BINARY_NAME: &str = "opencode-desktop";
 
 #[derive(serde::Deserialize, Debug)]
 pub struct ServerConfig {
@@ -155,6 +157,134 @@ pub fn sync_cli(app: tauri::AppHandle) -> Result<(), String> {
     install_cli(app)?;
 
     tracing::info!("Synced installed CLI");
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn desktop_script(app: &tauri::AppHandle) -> String {
+    let id = app.config().identifier.clone();
+    format!(
+        "#!/usr/bin/env bash\nset -euo pipefail\nopen -b '{id}' --args \"$@\"\n"
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn write_launcher(path: &std::path::Path, content: &str, overwrite: bool) -> Result<(), String> {
+    if path.exists() {
+        let same = std::fs::read_to_string(path)
+            .map(|existing| existing == content)
+            .unwrap_or(false);
+
+        if same {
+            return Ok(());
+        }
+
+        if !overwrite {
+            return Err("Launcher already exists".to_string());
+        }
+    }
+
+    std::fs::write(path, content).map_err(|e| format!("Failed to write launcher: {e}"))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Failed to set launcher permissions: {e}"))?;
+    }
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_path(dir: &std::path::Path) -> Result<(), String> {
+    let Some(dir) = dir.to_str() else {
+        return Ok(());
+    };
+
+    let Ok(path) = std::env::var("PATH") else {
+        return Ok(());
+    };
+
+    if path.split(':').any(|p| p == dir) {
+        return Ok(());
+    }
+
+    let Ok(home) = std::env::var("HOME") else {
+        return Ok(());
+    };
+
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "".to_string());
+    let shell = std::path::Path::new(&shell)
+        .file_name()
+        .and_then(|v| v.to_str())
+        .unwrap_or("sh");
+
+    let file = match shell {
+        "fish" => std::path::PathBuf::from(home).join(".config/fish/config.fish"),
+        "zsh" => std::path::PathBuf::from(home).join(".zshrc"),
+        "bash" => std::path::PathBuf::from(home).join(".bashrc"),
+        _ => std::path::PathBuf::from(home).join(".profile"),
+    };
+
+    let line = match shell {
+        "fish" => "fish_add_path $HOME/.opencode/bin\n".to_string(),
+        _ => "export PATH=\"$HOME/.opencode/bin:$PATH\"\n".to_string(),
+    };
+
+    let existing = std::fs::read_to_string(&file).unwrap_or_default();
+    if existing.contains(".opencode/bin") {
+        return Ok(());
+    }
+
+    if let Some(parent) = file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let mut out = existing;
+    if !out.ends_with('\n') && !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str("# opencode-desktop\n");
+    out.push_str(&line);
+
+    std::fs::write(&file, out).map_err(|e| format!("Failed to update shell config: {e}"))?;
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn sync_desktop_command(app: tauri::AppHandle) -> Result<(), String> {
+    if cfg!(debug_assertions) {
+        tracing::debug!("Skipping desktop command sync for debug build");
+        return Ok(());
+    }
+
+    let script = desktop_script(&app);
+
+    for dir in ["/usr/local/bin", "/opt/homebrew/bin"] {
+        let path = std::path::PathBuf::from(dir).join(DESKTOP_BINARY_NAME);
+        if write_launcher(&path, &script, false).is_ok() {
+            return Ok(());
+        }
+    }
+
+    let Ok(home) = std::env::var("HOME") else {
+        return Err("Could not determine home directory".to_string());
+    };
+
+    let path = std::path::PathBuf::from(home)
+        .join(CLI_INSTALL_DIR)
+        .join(DESKTOP_BINARY_NAME);
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create launcher dir: {e}"))?;
+        ensure_path(parent)?;
+    }
+
+    write_launcher(&path, &script, true)?;
 
     Ok(())
 }

@@ -552,6 +552,9 @@ async fn initialize(app: AppHandle) {
     setup_app(&app, init_rx);
     spawn_cli_sync_task(app.clone());
 
+    #[cfg(target_os = "macos")]
+    spawn_desktop_command_sync_task(app.clone());
+
     let (server_ready_tx, server_ready_rx) = oneshot::channel();
     let server_ready_rx = server_ready_rx.shared();
     app.manage(ServerState::new(None, server_ready_rx.clone()));
@@ -720,6 +723,15 @@ fn spawn_cli_sync_task(app: AppHandle) {
     tokio::spawn(async move {
         if let Err(e) = sync_cli(app) {
             tracing::error!("Failed to sync CLI: {e}");
+        }
+    });
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_desktop_command_sync_task(app: AppHandle) {
+    tokio::spawn(async move {
+        if let Err(e) = crate::cli::sync_desktop_command(app) {
+            tracing::error!("Failed to sync desktop command: {e}");
         }
     });
 }

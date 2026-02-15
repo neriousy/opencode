@@ -1,0 +1,9 @@
+!macro NSIS_HOOK_POSTINSTALL
+  ; Add install dir to the current user's PATH so `opencode-desktop` works in new terminals.
+  ExecWait 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$d=\"$INSTDIR\"; $p=[Environment]::GetEnvironmentVariable(\"Path\",\"User\"); if([string]::IsNullOrEmpty($p)){ $n=$d } elseif(($p -split \";\") -contains $d){ $n=$p } else { $n=$p + \";\" + $d }; [Environment]::SetEnvironmentVariable(\"Path\",$n,\"User\"); try { $sig=\"[DllImport(\\\"user32.dll\\\", SetLastError=true, CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);\"; Add-Type -Namespace Win32 -Name Native -MemberDefinition $sig -ErrorAction SilentlyContinue | Out-Null; [UIntPtr]$r=0; [Win32.Native]::SendMessageTimeout([IntPtr]0xffff,0x1a,[UIntPtr]0,\"Environment\",2,5000,[ref]$r) | Out-Null } catch {}"'
+!macroend
+
+!macro NSIS_HOOK_POSTUNINSTALL
+  ; Remove install dir from the current user's PATH.
+  ExecWait 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$d=\"$INSTDIR\"; $p=[Environment]::GetEnvironmentVariable(\"Path\",\"User\"); if([string]::IsNullOrEmpty($p)) { exit 0 }; $n=(($p -split \";\") | Where-Object { $_ -and ($_ -ne $d) }) -join \";\"; [Environment]::SetEnvironmentVariable(\"Path\",$n,\"User\"); try { $sig=\"[DllImport(\\\"user32.dll\\\", SetLastError=true, CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);\"; Add-Type -Namespace Win32 -Name Native -MemberDefinition $sig -ErrorAction SilentlyContinue | Out-Null; [UIntPtr]$r=0; [Win32.Native]::SendMessageTimeout([IntPtr]0xffff,0x1a,[UIntPtr]0,\"Environment\",2,5000,[ref]$r) | Out-Null } catch {}"'
+!macroend
