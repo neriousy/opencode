@@ -81,6 +81,7 @@ import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { formatTranscript } from "../../util/transcript"
 import { UI } from "@/cli/ui.ts"
 import { useTuiConfig } from "../../context/tui-config"
+import { compact } from "./compact"
 
 addDefaultParsers(parsers.parsers)
 
@@ -350,6 +351,7 @@ export function Session() {
   }
 
   const command = useCommandDialog()
+  const locks = new Set<string>()
   command.register(() => [
     {
       title: session()?.share?.url ? "Copy share link" : "Share session",
@@ -447,23 +449,15 @@ export function Session() {
         name: "compact",
         aliases: ["summarize"],
       },
-      onSelect: (dialog) => {
-        const selectedModel = local.model.current()
-        if (!selectedModel) {
-          toast.show({
-            variant: "warning",
-            message: "Connect a provider to summarize this session",
-            duration: 3000,
-          })
-          return
-        }
-        sdk.client.session.summarize({
+      onSelect: (dialog) =>
+        compact({
+          dialog,
+          lock: locks,
+          model: local.model.current(),
+          run: (input) => sdk.client.session.summarize(input),
           sessionID: route.sessionID,
-          modelID: selectedModel.modelID,
-          providerID: selectedModel.providerID,
-        })
-        dialog.clear()
-      },
+          toast,
+        }),
     },
     {
       title: "Unshare session",
