@@ -45,13 +45,6 @@ export async function compact(input: Input) {
       modelID: input.model.modelID,
       providerID: input.model.providerID,
     })
-    .then(() => {
-      input.toast.show({
-        variant: "success",
-        message: "Session compacted successfully",
-        duration: 3000,
-      })
-    })
     .catch((err) => {
       input.toast.show({
         variant: "error",

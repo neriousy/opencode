@@ -36,7 +36,7 @@ describe("tui compact action", () => {
     job.resolve()
     await task
 
-    expect(seen).toEqual(["success:Session compacted successfully", "clear"])
+    expect(seen).toEqual(["clear"])
   })
 
   test("prevents duplicate in-flight compactions for the same session", async () => {
