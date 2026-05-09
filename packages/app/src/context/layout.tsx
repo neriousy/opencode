@@ -391,14 +391,22 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         ? globalSync.data.project.find((x) => x.id === projectID)
         : globalSync.data.project.find((x) => x.worktree === project.worktree)
 
+      const base: LocalProject = { ...metadata, ...project }
+      // ProjectMeta is client-side metadata used by global/non-git projects and older app versions.
+      // Keep server metadata authoritative, but fall back to the local copy when the server has none.
+      const next: LocalProject = {
+        ...base,
+        name: base.name ?? childStore.projectMeta?.name,
+        icon: base.icon ?? childStore.projectMeta?.icon,
+        commands: base.commands ?? childStore.projectMeta?.commands,
+      }
       // Preserve local icon override from per-workspace localStorage cache (childStore.icon).
       // Without this, different subdirectories of the same git repo would share the same
       // icon from the database instead of using their individual overrides.
-      const base = { ...metadata, ...project }
       if (childStore.icon) {
-        return { ...base, icon: { ...base.icon, override: childStore.icon } }
+        return { ...next, icon: { ...next.icon, override: childStore.icon } }
       }
-      return base
+      return next
     }
 
     const roots = createMemo(() => {
