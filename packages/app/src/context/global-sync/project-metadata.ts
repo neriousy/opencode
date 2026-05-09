@@ -1,4 +1,5 @@
 import type { Project } from "@opencode-ai/sdk/v2/client"
+import type { createChildStoreManager } from "./child-store"
 import type { ProjectMeta } from "./types"
 import { directoryKey } from "./utils"
 
@@ -33,18 +34,8 @@ type UpdateProject = (input: { projectID: string; directory: string } & ProjectM
   data?: Project
 }>
 
-type ProjectMetadataChild = {
-  projectMeta: ProjectMeta | undefined
-  icon: string | undefined
-}
-
-type ProjectMetadataStore = {
-  children: Record<string, [ProjectMetadataChild, unknown] | undefined>
-  clearProjectMeta: (directory: string) => void
-}
-
 export function createProjectMetadataPromotion(input: {
-  children: ProjectMetadataStore
+  children: ReturnType<typeof createChildStoreManager>
   update: UpdateProject
   upsertProject: (project: Project) => void
 }) {
