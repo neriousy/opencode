@@ -714,9 +714,26 @@ export default function Page() {
 
   const gitMutation = useMutation(() => ({
     mutationFn: () => sdk.client.project.initGit(),
-    onSuccess: (x) => {
+    onSuccess: async (x) => {
       if (!x.data) return
-      upsert(x.data)
+      const meta = sync.data.projectMeta
+      const icon = meta?.icon ?? (sync.data.icon ? { override: sync.data.icon } : undefined)
+      if (meta?.name === undefined && !icon && !meta?.commands) {
+        upsert(x.data)
+        return
+      }
+
+      const promoted = await sdk.client.project
+        .update({
+          projectID: x.data.id,
+          directory: sdk.directory,
+          ...(meta?.name !== undefined ? { name: meta.name } : {}),
+          ...(icon ? { icon } : {}),
+          ...(meta?.commands ? { commands: meta.commands } : {}),
+        })
+        .then((next) => next.data ?? x.data)
+        .catch(() => x.data)
+      upsert(promoted)
     },
     onError: (err) => {
       showToast({
