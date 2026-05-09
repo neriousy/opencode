@@ -140,8 +140,8 @@ function groupBySession<T extends { id: string; sessionID: string }>(input: T[])
   }, {})
 }
 
-function projectID(directory: string, projects: Project[]) {
-  return projects.find((project) => project.worktree === directory || project.sandboxes?.includes(directory))?.id
+function projectFor(directory: string, projects: Project[]) {
+  return projects.find((project) => project.worktree === directory || project.sandboxes?.includes(directory))
 }
 
 function mergeSession(setStore: SetStoreFunction<State>, session: Session) {
@@ -203,6 +203,7 @@ export async function bootstrapDirectory(input: {
   setStore: SetStoreFunction<State>
   vcsCache: VcsCache
   loadSessions: (directory: string) => Promise<void> | void
+  onProjectResolved?: (project: Project) => void
   translate: (key: string, vars?: Record<string, string | number>) => string
   global: {
     config: Config
@@ -213,9 +214,14 @@ export async function bootstrapDirectory(input: {
   queryClient: QueryClient
 }) {
   const loading = input.store.status !== "complete"
-  const seededProject = projectID(input.directory, input.global.project)
+  const seededProject = projectFor(input.directory, input.global.project)
   const seededPath = input.global.path.directory === input.directory ? input.global.path : undefined
-  if (seededProject) input.setStore("project", seededProject)
+  const setProject = (project: Project | undefined) => {
+    if (!project) return
+    input.setStore("project", project.id)
+    input.onProjectResolved?.(project)
+  }
+  setProject(seededProject)
   if (seededPath) input.setStore("path", seededPath)
   if (Object.keys(input.store.config).length === 0 && Object.keys(input.global.config).length > 0) {
     input.setStore("config", reconcile(input.global.config, { merge: false }))
@@ -235,12 +241,12 @@ export async function bootstrapDirectory(input: {
         retry(() => input.sdk.config.get().then((x) => input.setStore("config", reconcile(x.data!, { merge: false })))),
       () => retry(() => input.sdk.session.status().then((x) => input.setStore("session_status", x.data!))),
       !seededProject &&
-        (() => retry(() => input.sdk.project.current()).then((x) => input.setStore("project", x.data!.id))),
+        (() => retry(() => input.sdk.project.current()).then((x) => setProject(x.data!))),
       !seededPath &&
         (() =>
           input.queryClient.ensureQueryData(loadPathQuery(input.directory, input.sdk)).then((data) => {
-            const next = projectID(data.directory ?? input.directory, input.global.project)
-            if (next) input.setStore("project", next)
+            const next = projectFor(data.directory ?? input.directory, input.global.project)
+            setProject(next)
           })),
       () =>
         retry(() =>

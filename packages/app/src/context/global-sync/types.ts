@@ -30,6 +30,8 @@ export type ProjectMeta = {
   }
 }
 
+type PersistReady = Accessor<boolean> & { promise?: Promise<unknown> }
+
 export type State = {
   status: "loading" | "partial" | "complete"
   agent: Agent[]
@@ -77,19 +79,19 @@ export type State = {
 export type VcsCache = {
   store: Store<{ value: VcsInfo | undefined }>
   setStore: SetStoreFunction<{ value: VcsInfo | undefined }>
-  ready: Accessor<boolean>
+  ready: PersistReady
 }
 
 export type MetaCache = {
   store: Store<{ value: ProjectMeta | undefined }>
   setStore: SetStoreFunction<{ value: ProjectMeta | undefined }>
-  ready: Accessor<boolean>
+  ready: PersistReady
 }
 
 export type IconCache = {
   store: Store<{ value: string | undefined }>
   setStore: SetStoreFunction<{ value: string | undefined }>
-  ready: Accessor<boolean>
+  ready: PersistReady
 }
 
 export type ChildOptions = {

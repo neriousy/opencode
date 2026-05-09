@@ -307,6 +307,15 @@ export function createChildStoreManager(input: {
     setStore("projectMeta", next)
   }
 
+  function clearProjectMeta(directory: string) {
+    const key = directoryKey(directory)
+    const [, setStore] = ensureChild(directory)
+    const cached = metaCache.get(key)
+    if (!cached) return
+    cached.setStore("value", undefined)
+    setStore("projectMeta", undefined)
+  }
+
   function projectIcon(directory: string, value: string | undefined) {
     const key = directoryKey(directory)
     const [store, setStore] = ensureChild(directory)
@@ -323,6 +332,7 @@ export function createChildStoreManager(input: {
     child,
     peek,
     projectMeta,
+    clearProjectMeta,
     projectIcon,
     mark,
     pin,

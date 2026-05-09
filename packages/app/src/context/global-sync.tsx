@@ -29,6 +29,7 @@ import { estimateRootSessionTotal, loadRootSessionsWithFallback } from "./global
 import { trimSessions } from "./global-sync/session-trim"
 import type { ProjectMeta } from "./global-sync/types"
 import { SESSION_RECENT_LIMIT } from "./global-sync/types"
+import { createProjectMetadataPromotion } from "./global-sync/project-metadata"
 import { formatServerError } from "@/utils/server-errors"
 import { queryOptions, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/solid-query"
 import { createRefreshQueue } from "./global-sync/queue"
@@ -126,6 +127,16 @@ function createGlobalSync() {
     setGlobalStore("project", next)
   }
 
+  const upsertProject = (next: Project) => {
+    setProjects((list) => {
+      const idx = list.findIndex((item) => item.id === next.id)
+      if (idx >= 0) return list.map((item, i) => (i === idx ? { ...item, ...next } : item))
+      const at = list.findIndex((item) => item.id > next.id)
+      if (at >= 0) return [...list.slice(0, at), next, ...list.slice(at)]
+      return [...list, next]
+    })
+  }
+
   const setBootStore = ((...input: unknown[]) => {
     if (input[0] === "project" && Array.isArray(input[1])) {
       setProjects(input[1] as Project[])
@@ -215,6 +226,19 @@ function createGlobalSync() {
     },
   })
 
+  const projectMetadataPromotion = createProjectMetadataPromotion({
+    children,
+    update: (input) => globalSDK.client.project.update(input),
+    upsertProject,
+  })
+
+  function syncProject(next: Project, directory = next.worktree) {
+    upsertProject(next)
+    const child = children.children[directoryKey(directory)]
+    if (child) child[1]("project", next.id)
+    projectMetadataPromotion.promote(directory, next)
+  }
+
   async function loadSessions(directory: string) {
     const key = directoryKey(directory)
     const pending = sessionLoads.get(key)
@@ -303,6 +327,11 @@ function createGlobalSync() {
       const child = children.ensureChild(directory)
       const cache = children.vcsCache.get(key)
       if (!cache) return
+      const pendingMetadata = [
+        children.metaCache.get(key)?.ready.promise,
+        children.iconCache.get(key)?.ready.promise,
+      ].filter((promise): promise is Promise<unknown> => !!promise)
+      if (pendingMetadata.length > 0) await Promise.all(pendingMetadata)
       const sdk = sdkFor(directory)
       await bootstrapDirectory({
         directory,
@@ -317,6 +346,10 @@ function createGlobalSync() {
         setStore: child[1],
         vcsCache: cache,
         loadSessions,
+        onProjectResolved: (project) => {
+          if (project.id !== "global") upsertProject(project)
+          projectMetadataPromotion.promote(directory, project)
+        },
         translate: language.t,
         queryClient,
       })
@@ -402,6 +435,7 @@ function createGlobalSync() {
 
   const projectApi = {
     loadSessions,
+    upsert: syncProject,
     meta(directory: string, patch: ProjectMeta) {
       children.projectMeta(directory, patch)
     },

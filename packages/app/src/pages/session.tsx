@@ -1,4 +1,4 @@
-import type { Project, UserMessage } from "@opencode-ai/sdk/v2"
+import type { UserMessage } from "@opencode-ai/sdk/v2"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { createQuery, skipToken, useMutation, useQueryClient } from "@tanstack/solid-query"
 import {
@@ -693,47 +693,11 @@ export default function Page() {
     scrollToMessage(msgs[targetIndex], "auto")
   }
 
-  function upsert(next: Project) {
-    const list = globalSync.data.project
-    sync.set("project", next.id)
-    const idx = list.findIndex((item) => item.id === next.id)
-    if (idx >= 0) {
-      globalSync.set(
-        "project",
-        list.map((item, i) => (i === idx ? { ...item, ...next } : item)),
-      )
-      return
-    }
-    const at = list.findIndex((item) => item.id > next.id)
-    if (at >= 0) {
-      globalSync.set("project", [...list.slice(0, at), next, ...list.slice(at)])
-      return
-    }
-    globalSync.set("project", [...list, next])
-  }
-
   const gitMutation = useMutation(() => ({
     mutationFn: () => sdk.client.project.initGit(),
-    onSuccess: async (x) => {
+    onSuccess: (x) => {
       if (!x.data) return
-      const meta = sync.data.projectMeta
-      const icon = meta?.icon ?? (sync.data.icon ? { override: sync.data.icon } : undefined)
-      if (meta?.name === undefined && !icon && !meta?.commands) {
-        upsert(x.data)
-        return
-      }
-
-      const promoted = await sdk.client.project
-        .update({
-          projectID: x.data.id,
-          directory: sdk.directory,
-          ...(meta?.name !== undefined ? { name: meta.name } : {}),
-          ...(icon ? { icon } : {}),
-          ...(meta?.commands ? { commands: meta.commands } : {}),
-        })
-        .then((next) => next.data ?? x.data)
-        .catch(() => x.data)
-      upsert(promoted)
+      globalSync.project.upsert(x.data, sdk.directory)
     },
     onError: (err) => {
       showToast({
