@@ -23,6 +23,12 @@ type SelectionKeyEvent = {
   stopPropagation: () => void
 }
 
+// Windows Terminal/ConPTY can choke on bursty OSC 52 writes from rapid select-copy gestures.
+const selectionCopySettleMs = 100
+
+let selectionCopyActive = false
+let pendingSelectionCopy: { text: string; toast: Toast } | undefined
+
 export function copy(renderer: Renderer, toast: Toast): boolean {
   const selection = renderer.getSelection()
   if (!selection) return false
@@ -34,12 +40,33 @@ export function copy(renderer: Renderer, toast: Toast): boolean {
   const clipboardText =
     focus?.getClipboardText && selection.selectedRenderables.includes(focus) ? focus.getClipboardText(text) : text
 
-  Clipboard.copy(clipboardText)
-    .then(() => toast.show({ message: "Copied to clipboard", variant: "info" }))
-    .catch(toast.error)
+  enqueueSelectionCopy(clipboardText, toast)
 
   renderer.clearSelection()
   return true
+}
+
+function enqueueSelectionCopy(text: string, toast: Toast) {
+  pendingSelectionCopy = { text, toast }
+  if (selectionCopyActive) return
+
+  selectionCopyActive = true
+  void drainSelectionCopyQueue()
+}
+
+async function drainSelectionCopyQueue() {
+  while (pendingSelectionCopy) {
+    const next = pendingSelectionCopy
+    pendingSelectionCopy = undefined
+
+    await Clipboard.copy(next.text)
+      .then(() => next.toast.show({ message: "Copied to clipboard", variant: "info" }))
+      .catch(next.toast.error)
+
+    await new Promise((resolve) => setTimeout(resolve, selectionCopySettleMs))
+  }
+
+  selectionCopyActive = false
 }
 
 export function handleSelectionKey(renderer: Renderer, toast: Toast, event: SelectionKeyEvent) {
