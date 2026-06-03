@@ -84,6 +84,32 @@ export const SettingsProvidersV2: Component = () => {
     return true
   }
 
+  const showConnectProvider = async (providerID: string) => {
+    if (!globalSync.data.provider_auth[providerID]) {
+      await globalSDK.client.provider
+        .auth()
+        .then((response) => {
+          const data = response.data ?? {}
+          globalSync.set(
+            "provider_auth",
+            data[providerID]
+              ? data
+              : {
+                  ...data,
+                  [providerID]: [
+                    {
+                      type: "api",
+                      label: language.t("provider.connect.method.apiKey"),
+                    },
+                  ],
+                },
+          )
+        })
+        .catch(() => undefined)
+    }
+    dialog.show(() => <DialogConnectProvider provider={providerID} back="settings-v2" />)
+  }
+
   const disableProvider = async (providerID: string, name: string) => {
     const before = globalSync.data.config.disabled_providers ?? []
     const next = before.includes(providerID) ? before : [...before, providerID]
@@ -209,7 +235,7 @@ export const SettingsProvidersV2: Component = () => {
                     variant="neutral"
                     icon="plus"
                     onClick={() => {
-                      dialog.show(() => <DialogConnectProvider provider={item.id} back="settings-v2" />)
+                      void showConnectProvider(item.id)
                     }}
                   >
                     {language.t("common.connect")}
