@@ -1,4 +1,4 @@
-import { Component, Show } from "solid-js"
+import { Component, createMemo, Show } from "solid-js"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { popularProviders, useProviders } from "@/hooks/use-providers"
 import { Dialog } from "@opencode-ai/ui/dialog"
@@ -19,6 +19,7 @@ export const DialogSelectProvider: Component = () => {
   const popularGroup = () => language.t("dialog.provider.group.popular")
   const otherGroup = () => language.t("dialog.provider.group.other")
   const customLabel = () => language.t("settings.providers.tag.custom")
+  const connectedIDs = createMemo(() => new Set(providers.connected().map((p) => p.id)))
   const note = (id: string) => {
     if (id === "anthropic") return language.t("dialog.provider.anthropic.note")
     if (id === "openai") return language.t("dialog.provider.openai.note")
@@ -35,7 +36,9 @@ export const DialogSelectProvider: Component = () => {
         key={(x) => x?.id}
         items={() => {
           language.locale()
-          return [{ id: CUSTOM_ID, name: customLabel() }, ...providers.all().values()]
+          return [{ id: CUSTOM_ID, name: customLabel() }, ...providers.all().values()].filter(
+            (provider) => provider.id === CUSTOM_ID || !connectedIDs().has(provider.id),
+          )
         }}
         filterKeys={["id", "name"]}
         groupBy={(x) => (popularProviders.includes(x.id) ? popularGroup() : otherGroup())}
