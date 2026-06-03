@@ -74,8 +74,12 @@ function init() {
   })
 
   const show = (element: DialogElement, owner: Owner, onClose?: () => void) => {
+ // Immediately dispose any existing dialog when showing a new one
     const current = active()
-
+    if (current) {
+      current.dispose()
+      setActive(undefined)
+    }
     if (timer.current !== undefined) {
       clearTimeout(timer.current)
       timer.current = undefined
@@ -112,7 +116,6 @@ function init() {
     if (!dispose || !setClosing) return
 
     setActive({ id, node, dispose, owner, onClose, setClosing })
-    current?.dispose()
   }
 
   return {
