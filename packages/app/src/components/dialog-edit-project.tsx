@@ -1,6 +1,6 @@
 import { Button } from "@opencode-ai/ui/button"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
-import { Dialog } from "@opencode-ai/ui/dialog"
+import { Dialog } from "@opencode-ai/ui/v2/dialog-v2"
 import { TextField } from "@opencode-ai/ui/text-field"
 import { useMutation } from "@tanstack/solid-query"
 import { Icon } from "@opencode-ai/ui/icon"

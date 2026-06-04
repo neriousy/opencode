@@ -1,5 +1,12 @@
 /* [data-component="dialog-trigger"] { } */
 
+[data-component="dialog-overlay"] {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background-color: var(--v2-overlay-simple-overlay-scrim);
+}
+
 [data-component="dialog-v2"] {
   position: fixed;
   inset: 0;
@@ -137,5 +144,35 @@
   &[data-size="x-large"] [data-slot="dialog-container"] {
     width: 800px;
     height: 560px;
+  }
+
+  &[data-transition] [data-slot="dialog-content"] {
+    animation: contentHide 100ms ease-in forwards;
+
+    &[data-expanded] {
+      animation: contentShow 150ms ease-out;
+    }
+  }
+}
+
+@keyframes contentShow {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes contentHide {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
   }
 }

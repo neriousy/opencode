@@ -1,5 +1,5 @@
 import { Component } from "solid-js"
-import { Dialog } from "@opencode-ai/ui/dialog"
+import { Dialog } from "@opencode-ai/ui/v2/dialog-v2"
 import { Tabs } from "@opencode-ai/ui/tabs"
 import { Icon } from "@opencode-ai/ui/icon"
 import { useLanguage } from "@/context/language"

@@ -186,7 +186,7 @@
   overflow: hidden;
 }
 
-.settings-v2-legacy-panel [data-component="dialog"] {
+.settings-v2-legacy-panel [data-component="dialog-v2"] {
   display: contents;
 }
 
