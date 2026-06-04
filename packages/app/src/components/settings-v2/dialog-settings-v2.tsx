@@ -16,7 +16,7 @@ export const DialogSettings: Component = () => {
   const platform = usePlatform()
 
   return (
-    <Dialog size="x-large" class="settings-v2-dialog" data-component="settings-v2-dialog">
+    <Dialog size="x-large" class="settings-v2-dialog">
       <TabsV2
         orientation="vertical"
         variant="settings"

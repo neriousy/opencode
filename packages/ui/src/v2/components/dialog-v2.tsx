@@ -24,7 +24,7 @@ export function Dialog(props: DialogProps) {
   const hasHeader = () => title() || action()
 
   return (
-    <div data-component="dialog" data-fit={local.fit ? true : undefined} data-size={local.size || "normal"}>
+    <div data-component="dialog-v2" data-fit={local.fit ? true : undefined} data-size={local.size || "normal"}>
       <div data-slot="dialog-container">
         <Kobalte.Content
           data-slot="dialog-content"
