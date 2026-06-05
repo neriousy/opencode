@@ -72,7 +72,7 @@ async function startProxy(
 ) {
   const port = await freePort()
   const apiKey = randomBytes(24).toString("base64url")
-  const child = spawn(npxCommand(), [
+  const proxyArgs = [
     "-y",
     "mcp-proxy@latest",
     "--host",
@@ -83,11 +83,13 @@ async function startProxy(
     "stream",
     "--apiKey",
     apiKey,
-    "--shell",
+    ...(process.platform === "win32" ? ["--shell"] : []),
     "--",
     request.command,
     ...(request.args ?? []),
-  ], {
+  ]
+  const launch = proxyLaunch(proxyArgs)
+  const child = spawn(launch.command, launch.args, {
     env: {
       ...process.env,
       ...request.environment,
@@ -122,8 +124,9 @@ function bridgeSignature(request: DesktopMcpBridgeRequest) {
   })
 }
 
-function npxCommand() {
-  return process.platform === "win32" ? "npx.cmd" : "npx"
+function proxyLaunch(args: string[]) {
+  if (process.platform !== "win32") return { command: "npx", args }
+  return { command: "cmd.exe", args: ["/d", "/s", "/c", "npx", ...args] }
 }
 
 async function hostForTarget(target: DesktopMcpTarget) {
