@@ -294,6 +294,7 @@ export function registerIpcHandlers(deps: Deps) {
 function requireDesktopMcpTarget(value: DesktopMcpTarget): DesktopMcpTarget {
   if (value?.target === "local") return value
   if (value?.target === "wsl" && typeof value.distro === "string" && value.distro.length > 0) return value
+  if (value?.target === "remote" && typeof value.serverUrl === "string" && value.serverUrl.length > 0) return value
   throw new Error("Invalid desktop MCP target")
 }
 

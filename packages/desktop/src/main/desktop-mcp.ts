@@ -1,9 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import { createServer } from "node:net"
+import { networkInterfaces } from "node:os"
 import { runWslInDistro } from "./wsl"
 
-type DesktopMcpTarget = { target: "local" } | { target: "wsl"; distro: string }
+type DesktopMcpTarget = { target: "local" } | { target: "wsl"; distro: string } | { target: "remote"; serverUrl: string }
 
 export type DesktopMcpBridgeRequest = {
   id: string
@@ -126,12 +127,53 @@ function npxCommand() {
 }
 
 async function hostForTarget(target: DesktopMcpTarget) {
-  if (target.target !== "wsl") return "127.0.0.1"
+  if (target.target === "local") return "127.0.0.1"
+  if (target.target === "remote") return hostForRemoteServer(target.serverUrl)
   const result = await runWslInDistro(
     ["sh", "-lc", "awk '/^nameserver / { print $2; exit }' /etc/resolv.conf"],
     target.distro,
   ).catch(() => undefined)
   return firstLine(result?.stdout ?? "") ?? "127.0.0.1"
+}
+
+function hostForRemoteServer(serverUrl: string) {
+  const serverAddress = ipv4FromUrl(serverUrl)
+  const addresses = Object.values(networkInterfaces())
+    .flatMap((items) => items ?? [])
+    .filter((item) => item.family === "IPv4" && !item.internal)
+    .map((item) => item.address)
+    .filter((address) => !address.startsWith("169.254."))
+
+  if (serverAddress) {
+    const sameSubnet = addresses.find((address) => sameIpv4Subnet24(address, serverAddress))
+    if (sameSubnet) return sameSubnet
+    if (isTailscaleAddress(serverAddress)) {
+      const tailscale = addresses.find(isTailscaleAddress)
+      if (tailscale) return tailscale
+    }
+  }
+
+  return addresses[0] ?? "127.0.0.1"
+}
+
+function ipv4FromUrl(value: string) {
+  try {
+    const hostname = new URL(value).hostname
+    return /^\d+\.\d+\.\d+\.\d+$/.test(hostname) ? hostname : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function sameIpv4Subnet24(left: string, right: string) {
+  const a = left.split(".")
+  const b = right.split(".")
+  return a.length === 4 && b.length === 4 && a[0] === b[0] && a[1] === b[1] && a[2] === b[2]
+}
+
+function isTailscaleAddress(address: string) {
+  const [first, second] = address.split(".").map((part) => Number(part))
+  return first === 100 && second >= 64 && second <= 127
 }
 
 function freePort() {

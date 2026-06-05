@@ -101,7 +101,7 @@ export type WslServersPlatform = {
   removeServer(id: string): Promise<void>
   startServer(id: string): Promise<void>
 }
-export type DesktopMcpTarget = { target: "local" } | { target: "wsl"; distro: string }
+export type DesktopMcpTarget = { target: "local" } | { target: "wsl"; distro: string } | { target: "remote"; serverUrl: string }
 export type DesktopMcpBridge = {
   url: string
   headers: Record<string, string>

@@ -431,7 +431,8 @@ render(() => {
       const desktopMcp = platform.desktopMcp
       const conn = server.current
       if (!desktopMcp || !conn) return
-      if (conn.type !== "sidecar" || conn.variant !== "wsl") return
+      const target = desktopMcpTarget(conn)
+      if (!target) return
 
       void (async () => {
         try {
@@ -446,7 +447,7 @@ render(() => {
               const [command, ...args] = item.command
               const bridge = await desktopMcp.startBridge({
                 id: item.name,
-                target: { target: "wsl", distro: conn.distro },
+                target,
                 command,
                 args,
                 environment: item.environment,
@@ -472,6 +473,17 @@ render(() => {
     })
 
     return null
+  }
+
+  function desktopMcpTarget(conn: ServerConnection.Any) {
+    if (conn.type === "sidecar") {
+      if (conn.variant === "wsl") return { target: "wsl" as const, distro: conn.distro }
+      if (conn.variant === "base") return { target: "local" as const }
+      return undefined
+    }
+    const host = new URL(conn.http.url).hostname
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return { target: "local" as const }
+    return { target: "remote" as const, serverUrl: conn.http.url }
   }
 
   type ClientPlacedMcp = {
