@@ -11,8 +11,8 @@ export const Local = Schema.Struct({
   environment: Schema.optional(Schema.Record(Schema.String, Schema.String)).annotate({
     description: "Environment variables to set when running the MCP server",
   }),
-  placement: Schema.optional(Schema.Literal("desktop")).annotate({
-    description: "Run this local MCP server from the desktop app and expose it to remote/WSL servers.",
+  placement: Schema.optional(Schema.Literal("client")).annotate({
+    description: "Run this local MCP server from the active interactive client and expose it to remote/WSL servers.",
   }),
   enabled: Schema.optional(Schema.Boolean).annotate({
     description: "Enable or disable the MCP server on startup",

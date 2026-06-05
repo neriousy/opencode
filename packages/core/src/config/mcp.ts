@@ -7,7 +7,7 @@ export class Local extends Schema.Class<Local>("ConfigV2.MCP.Local")({
   type: Schema.Literal("local"),
   command: Schema.String.pipe(Schema.Array),
   environment: Schema.Record(Schema.String, Schema.String).pipe(Schema.optional),
-  placement: Schema.Literal("desktop").pipe(Schema.optional),
+  placement: Schema.Literal("client").pipe(Schema.optional),
   disabled: Schema.Boolean.pipe(Schema.optional),
   timeout: PositiveInt.pipe(Schema.optional),
 }) {}

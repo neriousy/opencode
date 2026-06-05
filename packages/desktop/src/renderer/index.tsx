@@ -436,9 +436,9 @@ render(() => {
       void (async () => {
         try {
           const config = await sdk.client.config.get().then((result) => result.data)
-          const bridges = desktopMcpConfigs(config)
+          const bridges = clientMcpConfigs(config)
           if (bridges.length === 0) return
-          const key = `${ServerConnection.key(conn)}:${sdk.url}:${desktopMcpSignature(bridges)}`
+          const key = `${ServerConnection.key(conn)}:${sdk.url}:${clientMcpSignature(bridges)}`
           if (key === lastRegistered) return
           lastRegistered = key
           await Promise.all(
@@ -474,27 +474,27 @@ render(() => {
     return null
   }
 
-  type DesktopPlacedMcp = {
+  type ClientPlacedMcp = {
     name: string
     command: string[]
     environment?: Record<string, string>
     timeout?: number
   }
 
-  function desktopMcpConfigs(config: unknown): DesktopPlacedMcp[] {
+  function clientMcpConfigs(config: unknown): ClientPlacedMcp[] {
     if (!config || typeof config !== "object" || !("mcp" in config)) return []
     const mcp = config.mcp
     if (!mcp || typeof mcp !== "object" || Array.isArray(mcp)) return []
     return Object.entries(mcp).flatMap(([name, item]) => {
-      if (!isDesktopPlacedMcp(item)) return []
+      if (!isClientPlacedMcp(item)) return []
       return [{ name, command: item.command, environment: item.environment, timeout: item.timeout }]
     })
   }
 
-  function isDesktopPlacedMcp(value: unknown): value is Omit<DesktopPlacedMcp, "name"> {
+  function isClientPlacedMcp(value: unknown): value is Omit<ClientPlacedMcp, "name"> {
     if (!value || typeof value !== "object" || Array.isArray(value)) return false
     if (!("type" in value) || value.type !== "local") return false
-    if (!("placement" in value) || value.placement !== "desktop") return false
+    if (!("placement" in value) || value.placement !== "client") return false
     if ("enabled" in value && value.enabled === false) return false
     if (!("command" in value) || !Array.isArray(value.command) || !value.command.every((item) => typeof item === "string")) {
       return false
@@ -515,7 +515,7 @@ render(() => {
     )
   }
 
-  function desktopMcpSignature(items: DesktopPlacedMcp[]) {
+  function clientMcpSignature(items: ClientPlacedMcp[]) {
     return JSON.stringify(items)
   }
 

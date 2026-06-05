@@ -460,8 +460,8 @@ export const layer = Layer.effect(
         log.info("mcp server disabled", { key })
         return DISABLED_RESULT
       }
-      if (mcp.type === "local" && mcp.placement === "desktop") {
-        log.info("mcp server waits for desktop bridge", { key })
+      if (mcp.type === "local" && mcp.placement === "client") {
+        log.info("mcp server waits for client bridge", { key })
         return DISABLED_RESULT
       }
 
