@@ -28,5 +28,6 @@ export {
 export { ServerConnection } from "./context/server"
 export { useServer } from "./context/server"
 export { useServerSDK } from "./context/server-sdk"
+export { useServerSync } from "./context/server-sync"
 export { usePlatform } from "./context/platform"
 export { handleNotificationClick } from "./utils/notification-click"

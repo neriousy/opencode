@@ -16,6 +16,7 @@ import {
   usePlatform,
   useServer,
   useServerSDK,
+  useServerSync,
   useWslServers,
 } from "@opencode-ai/app"
 import * as Sentry from "@sentry/solid"
@@ -425,6 +426,7 @@ render(() => {
     const platform = usePlatform()
     const server = useServer()
     const sdk = useServerSDK()
+    const serverSync = useServerSync()
     let lastRegistered = ""
 
     createEffect(() => {
@@ -465,6 +467,7 @@ render(() => {
               })
             }),
           )
+          await serverSync.refreshMcp()
         } catch (error) {
           console.warn("[desktop-mcp] failed to register desktop MCP bridge", error)
           lastRegistered = ""

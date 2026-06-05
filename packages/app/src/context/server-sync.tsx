@@ -465,6 +465,10 @@ export function createServerSyncContextInner(_serverSDK?: ServerSDK) {
     child: children.child,
     peek: children.peek,
     disableMcp: children.disableMcp,
+    refreshMcp: () =>
+      queryClient.refetchQueries({
+        predicate: (query) => query.queryKey[0] === serverSDK.scope && query.queryKey[2] === "mcp",
+      }),
     queryOptions: queryOptionsApi,
     // bootstrap,
     updateConfig: updateConfigMutation.mutateAsync,
