@@ -15,6 +15,7 @@ import type { ServerReadyData } from "../preload/types"
 import { checkAppExists, resolveAppPath, wslPath } from "./apps"
 import { CHANNEL, UPDATER_ENABLED } from "./constants"
 import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
+import { forwardInitializationFailure } from "./initialization"
 import { exportDebugLogs, initCrashReporter, initLogging, startNetLog, write as writeLog } from "./logging"
 import { parseMarkdown } from "./markdown"
 import { createMenu } from "./menu"
@@ -228,7 +229,7 @@ const main = Effect.gen(function* () {
     })
   }
 
-  const serverReady = Deferred.makeUnsafe<ServerReadyData>()
+  const serverReady = Deferred.makeUnsafe<ServerReadyData, unknown>()
 
   registerIpcHandlers({
     killSidecar: () => killSidecar(),
@@ -351,7 +352,7 @@ const main = Effect.gen(function* () {
     )
 
     logger.log("loading task finished")
-  }).pipe(Effect.forkChild)
+  }).pipe(forwardInitializationFailure(serverReady), Effect.forkChild)
 
   yield* Fiber.await(loadingTask)
 

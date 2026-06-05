@@ -25,7 +25,6 @@ import {
   onCleanup,
   type ParentProps,
   Show,
-  Suspense,
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { CommandProvider } from "@/context/command"
@@ -45,6 +44,7 @@ import { ServerConnection, ServerProvider, serverName, useServer } from "@/conte
 import { SettingsProvider, useSettings } from "@/context/settings"
 import { TerminalProvider } from "@/context/terminal"
 import { WslServersProvider } from "@/context/wsl-servers"
+import { TabsProvider } from "@/context/tabs"
 import DirectoryLayout from "@/pages/directory-layout"
 import Layout from "@/pages/layout"
 import { ErrorPage } from "./pages/error"
@@ -73,6 +73,7 @@ declare global {
       updaterEnabled?: boolean
       deepLinks?: string[]
       activeServer?: string
+      wsl?: boolean
     }
     api?: {
       setTitlebar?: (theme: { mode: "light" | "dark" }) => Promise<void>
@@ -214,26 +215,21 @@ function ConnectionGate(props: ParentProps<{ disableHealthCheck?: boolean }>) {
           Effect.runPromise,
         ),
   )
+  const checking = createMemo(
+    () => checkMode() === "blocking" && ["unresolved", "pending"].includes(startupHealthCheck.state),
+  )
 
   return (
-    <Suspense
+    <Show
+      when={!checking()}
       fallback={
         <div class="h-dvh w-screen flex flex-col items-center justify-center bg-background-base">
           <Splash class="w-16 h-20 opacity-50 animate-pulse" />
         </div>
       }
     >
-      {/*<Show
-        when={checkMode() === "blocking" ? !startupHealthCheck.loading : startupHealthCheck.state !== "pending"}
-        fallback={
-          <div class="h-dvh w-screen flex flex-col items-center justify-center bg-background-base">
-            <Splash class="w-16 h-20 opacity-50 animate-pulse" />
-          </div>
-        }
-      >*/}
-      {checkMode() === "blocking" ? startupHealthCheck() : startupHealthCheck.latest}
       <Show
-        when={startupHealthCheck()}
+        when={startupHealthCheck.latest}
         fallback={
           <ConnectionError
             onRetry={() => {
@@ -249,8 +245,7 @@ function ConnectionGate(props: ParentProps<{ disableHealthCheck?: boolean }>) {
       >
         {props.children}
       </Show>
-      {/*</Show>*/}
-    </Suspense>
+    </Show>
   )
 }
 
@@ -313,34 +308,43 @@ function ServerKey(props: { children: (key: ServerConnection.Key) => JSX.Element
 export function AppInterface(props: {
   children?: JSX.Element
   defaultServer: ServerConnection.Key
+  canonicalLocalServer?: ServerConnection.Key
   servers?: Array<ServerConnection.Any>
   router?: Component<BaseRouterProps>
   disableHealthCheck?: boolean
 }) {
   return (
-    <ServerProvider defaultServer={props.defaultServer} servers={props.servers}>
-      <GlobalProvider defaultServer={props.defaultServer} servers={props.servers}>
+    <ServerProvider
+      defaultServer={props.defaultServer}
+      canonicalLocalServer={props.canonicalLocalServer}
+      servers={props.servers}
+    >
+      <GlobalProvider>
         <ConnectionGate disableHealthCheck={props.disableHealthCheck}>
-          <ServerKey>
-            {() => (
-              <QueryProvider>
-                <ServerSDKProvider>
-                  <ServerSyncProvider>
-                  <Dynamic
-                    component={props.router ?? Router}
-                    root={(routerProps) => <RouterRoot appChildren={props.children}>{routerProps.children}</RouterRoot>}
-                  >
-                    <Route path="/" component={HomeRoute} />
-                    <Route path="/:dir" component={DirectoryLayout}>
-                      <Route path="/" component={() => <Navigate href="session" />} />
-                      <Route path="/session/:id?" component={SessionRoute} />
-                    </Route>
-                  </Dynamic>
-                  </ServerSyncProvider>
-                </ServerSDKProvider>
-              </QueryProvider>
+          <Dynamic
+            component={props.router ?? Router}
+            root={(routerProps) => (
+              <TabsProvider>
+                <ServerKey>
+                  {() => (
+                    <QueryProvider>
+                      <ServerSDKProvider>
+                        <ServerSyncProvider>
+                          <RouterRoot appChildren={props.children}>{routerProps.children}</RouterRoot>
+                        </ServerSyncProvider>
+                      </ServerSDKProvider>
+                    </QueryProvider>
+                  )}
+                </ServerKey>
+              </TabsProvider>
             )}
-          </ServerKey>
+          >
+            <Route path="/" component={HomeRoute} />
+            <Route path="/:dir" component={DirectoryLayout}>
+              <Route path="/" component={() => <Navigate href="session" />} />
+              <Route path="/session/:id?" component={SessionRoute} />
+            </Route>
+          </Dynamic>
         </ConnectionGate>
       </GlobalProvider>
     </ServerProvider>
