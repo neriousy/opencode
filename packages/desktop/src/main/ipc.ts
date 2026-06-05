@@ -4,6 +4,9 @@ import type { IpcMainEvent, IpcMainInvokeEvent } from "electron"
 import type { DesktopMenuAction } from "@opencode-ai/app/desktop-menu"
 
 import type {
+  DesktopMcpBridge,
+  DesktopMcpBridgeRequest,
+  DesktopMcpTarget,
   FatalRendererError,
   ServerReadyData,
   TitlebarTheme,
@@ -19,6 +22,11 @@ import { getPinchZoomEnabled, setPinchZoomEnabled, setTitlebar, updateTitlebar }
 const pickerFilters = (ext?: string[]) => {
   if (!ext || ext.length === 0) return undefined
   return [{ name: "Files", extensions: ext }]
+}
+
+const requireString = (name: string, value: unknown) => {
+  if (typeof value === "string" && value.length > 0) return value
+  throw new Error(`Invalid ${name}`)
 }
 
 type Deps = {
@@ -38,6 +46,7 @@ type Deps = {
   wslServersAddServer: (distro: string) => Promise<WslServerConfig> | WslServerConfig
   wslServersRemoveServer: (id: string) => Promise<void> | void
   wslServersStartServer: (id: string) => Promise<void> | void
+  desktopMcpStartBridge: (request: DesktopMcpBridgeRequest) => Promise<DesktopMcpBridge> | DesktopMcpBridge
   getWindowConfig: () => Promise<WindowConfig> | WindowConfig
   consumeInitialDeepLinks: () => Promise<string[]> | string[]
   getDefaultServerUrl: () => Promise<string | null> | string | null
@@ -57,11 +66,6 @@ type Deps = {
 }
 
 export function registerIpcHandlers(deps: Deps) {
-  const requireString = (name: string, value: unknown) => {
-    if (typeof value === "string" && value.length > 0) return value
-    throw new Error(`Invalid ${name}`)
-  }
-
   const wslSubscriptions = new Map<number, () => void>()
   const unsubscribeWsl = (id: number) => {
     const off = wslSubscriptions.get(id)
@@ -120,6 +124,9 @@ export function registerIpcHandlers(deps: Deps) {
   )
   ipcMain.handle("wsl-servers-start", (_event: IpcMainInvokeEvent, id: string) =>
     deps.wslServersStartServer(requireString("server id", id)),
+  )
+  ipcMain.handle("desktop-mcp-start-bridge", (_event: IpcMainInvokeEvent, request: DesktopMcpBridgeRequest) =>
+    deps.desktopMcpStartBridge(requireDesktopMcpBridgeRequest(request)),
   )
   ipcMain.handle("get-window-config", () => deps.getWindowConfig())
   ipcMain.handle("consume-initial-deep-links", () => deps.consumeInitialDeepLinks())
@@ -282,6 +289,41 @@ export function registerIpcHandlers(deps: Deps) {
   ipcMain.handle("run-desktop-menu-action", (event: IpcMainInvokeEvent, action: DesktopMenuAction) => {
     runDesktopMenuAction(BrowserWindow.fromWebContents(event.sender), action)
   })
+}
+
+function requireDesktopMcpTarget(value: DesktopMcpTarget): DesktopMcpTarget {
+  if (value?.target === "local") return value
+  if (value?.target === "wsl" && typeof value.distro === "string" && value.distro.length > 0) return value
+  throw new Error("Invalid desktop MCP target")
+}
+
+function requireDesktopMcpBridgeRequest(value: DesktopMcpBridgeRequest): DesktopMcpBridgeRequest {
+  return {
+    id: requireString("desktop MCP id", value?.id),
+    target: requireDesktopMcpTarget(value?.target),
+    command: requireString("desktop MCP command", value?.command),
+    args: requireStringArray("desktop MCP args", value?.args),
+    environment: requireStringRecord("desktop MCP environment", value?.environment),
+  }
+}
+
+function requireStringArray(name: string, value: unknown) {
+  if (value === undefined) return undefined
+  if (Array.isArray(value) && value.every((item) => typeof item === "string")) return value
+  throw new Error(`Invalid ${name}`)
+}
+
+function requireStringRecord(name: string, value: unknown) {
+  if (value === undefined) return undefined
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.values(value).every((item) => typeof item === "string")
+  ) {
+    return value as Record<string, string>
+  }
+  throw new Error(`Invalid ${name}`)
 }
 
 export function sendMenuCommand(win: BrowserWindow, id: string) {

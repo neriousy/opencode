@@ -87,6 +87,21 @@ export type WslServersAPI = {
   removeServer: (id: string) => Promise<void>
   startServer: (id: string) => Promise<void>
 }
+export type DesktopMcpTarget = { target: "local" } | { target: "wsl"; distro: string }
+export type DesktopMcpBridge = {
+  url: string
+  headers: Record<string, string>
+}
+export type DesktopMcpBridgeRequest = {
+  id: string
+  target: DesktopMcpTarget
+  command: string
+  args?: string[]
+  environment?: Record<string, string>
+}
+export type DesktopMcpAPI = {
+  startBridge: (request: DesktopMcpBridgeRequest) => Promise<DesktopMcpBridge>
+}
 
 export type LinuxDisplayBackend = "wayland" | "auto"
 export type TitlebarTheme = {
@@ -109,6 +124,7 @@ export type ElectronAPI = {
   installCli: () => Promise<string>
   awaitInitialization: () => Promise<ServerReadyData>
   wslServers: WslServersAPI
+  desktopMcp: DesktopMcpAPI
   getWindowConfig: () => Promise<WindowConfig>
   consumeInitialDeepLinks: () => Promise<string[]>
   getDefaultServerUrl: () => Promise<string | null>

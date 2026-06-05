@@ -28,6 +28,9 @@ const api: ElectronAPI = {
     removeServer: (id) => ipcRenderer.invoke("wsl-servers-remove", id),
     startServer: (id) => ipcRenderer.invoke("wsl-servers-start", id),
   },
+  desktopMcp: {
+    startBridge: (request) => ipcRenderer.invoke("desktop-mcp-start-bridge", request),
+  },
   getWindowConfig: () => ipcRenderer.invoke("get-window-config"),
   consumeInitialDeepLinks: () => ipcRenderer.invoke("consume-initial-deep-links"),
   getDefaultServerUrl: () => ipcRenderer.invoke("get-default-server-url"),

@@ -460,6 +460,10 @@ export const layer = Layer.effect(
         log.info("mcp server disabled", { key })
         return DISABLED_RESULT
       }
+      if (mcp.type === "local" && mcp.placement === "desktop") {
+        log.info("mcp server waits for desktop bridge", { key })
+        return DISABLED_RESULT
+      }
 
       log.info("found", { key, type: mcp.type })
 
@@ -546,7 +550,6 @@ export const layer = Layer.effect(
                 s.status[key] = { status: "disabled" }
                 return
               }
-
               const result = yield* create(key, mcp).pipe(Effect.catch(() => Effect.void))
               if (!result) return
 

@@ -14,6 +14,7 @@ import contextMenu from "electron-context-menu"
 import type { ServerReadyData } from "../preload/types"
 import { checkAppExists, resolveAppPath, wslPath } from "./apps"
 import { CHANNEL, UPDATER_ENABLED } from "./constants"
+import { createDesktopMcpController } from "./desktop-mcp"
 import { registerIpcHandlers, sendDeepLinks, sendMenuCommand } from "./ipc"
 import { forwardInitializationFailure } from "./initialization"
 import { exportDebugLogs, initCrashReporter, initLogging, startNetLog, write as writeLog } from "./logging"
@@ -148,6 +149,7 @@ const main = Effect.gen(function* () {
       error: (message, meta) => logger.error(message, meta),
     },
   )
+  const desktopMcp = createDesktopMcpController(logger)
   const stopSidecars = async () => {
     await killSidecar()
     wslServers.stopAll()
@@ -204,6 +206,7 @@ const main = Effect.gen(function* () {
   })
 
   app.on("before-quit", () => {
+    desktopMcp.stopAll()
     void stopSidecars()
   })
 
@@ -256,6 +259,7 @@ const main = Effect.gen(function* () {
     wslServersAddServer: (distro) => wslServers.addServer(distro),
     wslServersRemoveServer: (id) => wslServers.removeServer(id),
     wslServersStartServer: (id) => wslServers.startServer(id),
+    desktopMcpStartBridge: (request) => desktopMcp.startBridge(request),
     getWindowConfig: () => ({ updaterEnabled: UPDATER_ENABLED }),
     consumeInitialDeepLinks: () => pendingDeepLinks.splice(0),
     getDefaultServerUrl: () => getDefaultServerUrl(),

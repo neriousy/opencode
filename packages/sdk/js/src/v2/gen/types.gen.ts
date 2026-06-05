@@ -1861,6 +1861,7 @@ export type McpLocalConfig = {
   environment?: {
     [key: string]: string
   }
+  placement?: "desktop"
   enabled?: boolean
   timeout?: number
 }

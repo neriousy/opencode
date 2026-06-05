@@ -206,7 +206,10 @@ export function DialogWslServer(props: DialogWslServerProps = {}) {
     const state = current()
     if (!state) return "Checking OpenCode..."
     const distro = store.selectedDistro
-    if (state.job?.kind === "probe-opencode" || state.job?.kind === "install-opencode") {
+    if (state.job?.kind === "install-opencode") {
+      return distro ? `Updating OpenCode in ${distro}...` : "Updating OpenCode..."
+    }
+    if (state.job?.kind === "probe-opencode") {
       return distro ? `Checking OpenCode in ${distro}...` : "Checking OpenCode..."
     }
     if (opencodeCheck()?.error) return opencodeCheck()!.error

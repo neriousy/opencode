@@ -101,6 +101,21 @@ export type WslServersPlatform = {
   removeServer(id: string): Promise<void>
   startServer(id: string): Promise<void>
 }
+export type DesktopMcpTarget = { target: "local" } | { target: "wsl"; distro: string }
+export type DesktopMcpBridge = {
+  url: string
+  headers: Record<string, string>
+}
+export type DesktopMcpBridgeRequest = {
+  id: string
+  target: DesktopMcpTarget
+  command: string
+  args?: string[]
+  environment?: Record<string, string>
+}
+export type DesktopMcpPlatform = {
+  startBridge(request: DesktopMcpBridgeRequest): Promise<DesktopMcpBridge>
+}
 
 export type Platform = {
   /** Platform discriminator */
@@ -159,6 +174,9 @@ export type Platform = {
 
   /** Manage WSL sidecar servers (Electron on Windows only) */
   wslServers?: WslServersPlatform
+
+  /** Manage desktop-local MCP bridges for GUI tools. */
+  desktopMcp?: DesktopMcpPlatform
 
   /** Get the preferred display backend (desktop only) */
   getDisplayBackend?(): Promise<DisplayBackend | null> | DisplayBackend | null

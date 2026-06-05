@@ -5,6 +5,10 @@ export { loadLocaleDict, normalizeLocale, type Locale } from "./context/language
 export { useWslServers } from "./context/wsl-servers"
 export {
   type DisplayBackend,
+  type DesktopMcpBridge,
+  type DesktopMcpBridgeRequest,
+  type DesktopMcpPlatform,
+  type DesktopMcpTarget,
   type FatalRendererErrorLog,
   type Platform,
   PlatformProvider,
@@ -22,4 +26,7 @@ export {
   type WslServersState,
 } from "./context/platform"
 export { ServerConnection } from "./context/server"
+export { useServer } from "./context/server"
+export { useServerSDK } from "./context/server-sdk"
+export { usePlatform } from "./context/platform"
 export { handleNotificationClick } from "./utils/notification-click"

@@ -13,6 +13,9 @@ import {
   PlatformProvider,
   ServerConnection,
   useCommand,
+  usePlatform,
+  useServer,
+  useServerSDK,
   useWslServers,
 } from "@opencode-ai/app"
 import * as Sentry from "@sentry/solid"
@@ -93,7 +96,10 @@ const createPlatform = (): Platform => {
     return window.api.wslPath("~", "windows", distro).catch(() => undefined)
   }
 
-  const handleWslPicker = async (result: string | string[] | null) => {
+  async function handleWslPicker(result: string | null): Promise<string | null>
+  async function handleWslPicker(result: string[]): Promise<string[]>
+  async function handleWslPicker(result: string | string[] | null): Promise<string | string[] | null>
+  async function handleWslPicker(result: string | string[] | null) {
     const distro = activeWslDistro()
     if (!result || !distro) return result
     const convert = (path: string) => window.api.wslPath(path, "linux", distro).catch(() => path)
@@ -261,6 +267,7 @@ const createPlatform = (): Platform => {
     },
 
     wslServers: os === "windows" ? window.api.wslServers : undefined,
+    desktopMcp: os === "windows" ? window.api.desktopMcp : undefined,
 
     getDisplayBackend: async () => {
       return window.api.getDisplayBackend().catch(() => null)
@@ -405,12 +412,111 @@ render(() => {
         {(_) => {
           return (
             <AppInterface defaultServer={effectiveDefaultServer()} servers={servers()} router={MemoryRouter}>
+              <DesktopMcpBridge />
               <Inner />
             </AppInterface>
           )
         }}
       </Show>
     )
+  }
+
+  function DesktopMcpBridge() {
+    const platform = usePlatform()
+    const server = useServer()
+    const sdk = useServerSDK()
+    let lastRegistered = ""
+
+    createEffect(() => {
+      const desktopMcp = platform.desktopMcp
+      const conn = server.current
+      if (!desktopMcp || !conn) return
+      if (conn.type !== "sidecar" || conn.variant !== "wsl") return
+
+      void (async () => {
+        try {
+          const config = await sdk.client.config.get().then((result) => result.data)
+          const bridges = desktopMcpConfigs(config)
+          if (bridges.length === 0) return
+          const key = `${ServerConnection.key(conn)}:${sdk.url}:${desktopMcpSignature(bridges)}`
+          if (key === lastRegistered) return
+          lastRegistered = key
+          await Promise.all(
+            bridges.map(async (item) => {
+              const [command, ...args] = item.command
+              const bridge = await desktopMcp.startBridge({
+                id: item.name,
+                target: { target: "wsl", distro: conn.distro },
+                command,
+                args,
+                environment: item.environment,
+              })
+              await sdk.client.mcp.add({
+                name: item.name,
+                config: {
+                  type: "remote",
+                  url: bridge.url,
+                  headers: bridge.headers,
+                  oauth: false,
+                  enabled: true,
+                  timeout: item.timeout ?? 30_000,
+                },
+              })
+            }),
+          )
+        } catch (error) {
+          console.warn("[desktop-mcp] failed to register desktop MCP bridge", error)
+          lastRegistered = ""
+        }
+      })()
+    })
+
+    return null
+  }
+
+  type DesktopPlacedMcp = {
+    name: string
+    command: string[]
+    environment?: Record<string, string>
+    timeout?: number
+  }
+
+  function desktopMcpConfigs(config: unknown): DesktopPlacedMcp[] {
+    if (!config || typeof config !== "object" || !("mcp" in config)) return []
+    const mcp = config.mcp
+    if (!mcp || typeof mcp !== "object" || Array.isArray(mcp)) return []
+    return Object.entries(mcp).flatMap(([name, item]) => {
+      if (!isDesktopPlacedMcp(item)) return []
+      return [{ name, command: item.command, environment: item.environment, timeout: item.timeout }]
+    })
+  }
+
+  function isDesktopPlacedMcp(value: unknown): value is Omit<DesktopPlacedMcp, "name"> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false
+    if (!("type" in value) || value.type !== "local") return false
+    if (!("placement" in value) || value.placement !== "desktop") return false
+    if ("enabled" in value && value.enabled === false) return false
+    if (!("command" in value) || !Array.isArray(value.command) || !value.command.every((item) => typeof item === "string")) {
+      return false
+    }
+    if (value.command.length === 0) return false
+    if ("environment" in value && !isStringRecord(value.environment)) return false
+    if ("timeout" in value && typeof value.timeout !== "number") return false
+    return true
+  }
+
+  function isStringRecord(value: unknown): value is Record<string, string> {
+    return (
+      value !== undefined &&
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      Object.values(value).every((item) => typeof item === "string")
+    )
+  }
+
+  function desktopMcpSignature(items: DesktopPlacedMcp[]) {
+    return JSON.stringify(items)
   }
 
   onMount(() => {

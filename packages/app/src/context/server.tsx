@@ -265,8 +265,9 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       batch(() => {
         setStore("list", list)
         if (state.active === key) {
-          const next = list[0]
-          setState("active", next ? ServerConnection.Key.make(url(next)) : props.defaultServer)
+          const remaining = allServers().filter((x) => ServerConnection.key(x) !== key)
+          const next = remaining.find((x) => ServerConnection.key(x) === props.defaultServer) ?? remaining[0]
+          setState("active", next ? ServerConnection.key(next) : props.defaultServer)
         }
       })
     }
@@ -288,7 +289,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     )
     const isLocal = createMemo(() => {
       const c = current()
-      return c?.type === "sidecar" || (c?.type === "http" && isLocalHost(c.http.url))
+      return (c?.type === "sidecar" && c.variant === "base") || (c?.type === "http" && isLocalHost(c.http.url))
     })
 
     return {

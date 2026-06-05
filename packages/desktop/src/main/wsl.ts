@@ -331,7 +331,7 @@ export async function readWslCommandVersion(command: string, distro: string, opt
 export async function upgradeWslOpencode(target: string, command: string, distro: string, opts?: RunWslOptions) {
   return runInteractiveCommand(
     resolveSystem32Command("wsl.exe"),
-    wslArgs(["bash", "-lc", `${shellEscape(command)} upgrade ${shellEscape(target)}`], distro, "root"),
+    wslArgs(["bash", "-lc", `${shellEscape(command)} upgrade ${shellEscape(target)}`], distro),
     withTimeout(opts, DEFAULT_WSL_INSTALL_TIMEOUT_MS),
     DEFAULT_WSL_INSTALL_TIMEOUT_MS,
   )

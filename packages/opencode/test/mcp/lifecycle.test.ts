@@ -528,6 +528,38 @@ it.instance(
   },
 )
 
+it.instance(
+  "desktop-placed local server is marked as disabled without attempting connection",
+  () =>
+    MCP.Service.use((mcp: MCPNS.Interface) =>
+      Effect.gen(function* () {
+        const countBefore = clientCreateCount
+
+        yield* mcp.add("desktop-server", {
+          type: "local",
+          command: ["echo", "test"],
+          placement: "desktop",
+        })
+
+        expect(clientCreateCount).toBe(countBefore)
+
+        const status = yield* mcp.status()
+        expect(status["desktop-server"]?.status).toBe("disabled")
+      }),
+    ),
+  {
+    config: {
+      mcp: {
+        "desktop-server": {
+          type: "local",
+          command: ["echo", "test"],
+          placement: "desktop",
+        },
+      },
+    },
+  },
+)
+
 // ========================================================================
 // Test: prompts() and resources()
 // ========================================================================
