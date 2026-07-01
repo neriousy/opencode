@@ -224,7 +224,21 @@ export function activeTreeNavigation(request: number, current: number) {
   return request === current
 }
 
-export function createPriorityTaskQueue<T>(concurrency: number) {
+export type PickerListingRequest<T> = {
+  generation: number
+  request: Promise<T | undefined>
+  settled: boolean
+  nodes?: T
+}
+
+export function reusablePickerListing<T>(listing: PickerListingRequest<T> | undefined, generation: number) {
+  if (!listing) return
+  if (listing.generation === generation) return listing
+  if (listing.settled && listing.nodes !== undefined) return listing
+  return
+}
+
+export function createPriorityTaskQueue<T>(concurrency: number, backgroundConcurrency = concurrency) {
   type Job = {
     key: string
     priority: "user" | "background"
@@ -236,12 +250,14 @@ export function createPriorityTaskQueue<T>(concurrency: number) {
   const user: Job[] = []
   const background: Job[] = []
   let active = 0
+  let activeBackground = 0
 
   const drain = () => {
     while (active < concurrency) {
-      const job = user.pop() ?? background.shift()
+      const job = user.pop() ?? (activeBackground < backgroundConcurrency ? background.shift() : undefined)
       if (!job) return
       active++
+      if (job.priority === "background") activeBackground++
       job.run()
     }
   }
@@ -261,6 +277,7 @@ export function createPriorityTaskQueue<T>(concurrency: number) {
       run: () => {
         const complete = () => {
           active--
+          if (job.priority === "background") activeBackground--
           jobs.delete(key)
           drain()
         }

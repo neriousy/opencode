@@ -4,6 +4,7 @@ import {
   activeTreeNavigation,
   advanceTreePreload,
   createDirectorySearch,
+  createPriorityTaskQueue,
   nextSuggestionIndex,
   nextTreeScrollTop,
   pickerTreeEntries,
@@ -15,12 +16,11 @@ import {
   treeEntries,
   treePathWithin,
   currentPickerSuggestions,
-  createDirectorySearch,
-  createPriorityTaskQueue,
   displayPickerPath,
   pickerParent,
   pickerRoot,
   pickerAbsoluteInput,
+  reusablePickerListing,
 } from "./directory-picker-domain"
 
 test("maps server directory entries into Pierre paths", () => {
@@ -205,6 +205,99 @@ test("limits background tasks and prioritizes newly requested work", async () =>
   await Promise.all(running)
   expect(started).toEqual(["first", "second", "opened", "preload"])
   expect(maximum).toBe(2)
+})
+
+test("runs promoted user work before queued background work", async () => {
+  const queue = createPriorityTaskQueue<void>(1)
+  const first = Promise.withResolvers<void>()
+  const openedBlocker = Promise.withResolvers<void>()
+  const started: string[] = []
+  const task = (name: string, blocker?: Promise<void>) => async () => {
+    started.push(name)
+    await blocker
+  }
+
+  const firstRun = queue.schedule("first", "background", task("first", first.promise))
+  const preload = queue.schedule("preload", "background", task("preload"))
+  const opened = queue.schedule("opened", "background", task("opened", openedBlocker.promise))
+  expect(queue.schedule("opened", "user", task("ignored"))).toBe(opened)
+  await Promise.resolve()
+  expect(started).toEqual(["first"])
+
+  first.resolve()
+  await firstRun
+  await Promise.resolve()
+  expect(started).toEqual(["first", "opened"])
+
+  openedBlocker.resolve()
+  await Promise.all([opened, preload])
+  expect(started).toEqual(["first", "opened", "preload"])
+})
+
+test("reserves queue capacity for user work when background is capped", async () => {
+  const queue = createPriorityTaskQueue<void>(3, 2)
+  const first = Promise.withResolvers<void>()
+  const second = Promise.withResolvers<void>()
+  const opened = Promise.withResolvers<void>()
+  const started: string[] = []
+  let active = 0
+  let maximum = 0
+  const task = (name: string, blocker?: Promise<void>) => async () => {
+    started.push(name)
+    active++
+    maximum = Math.max(maximum, active)
+    await blocker
+    active--
+  }
+
+  const running = [
+    queue.schedule("first", "background", task("first", first.promise)),
+    queue.schedule("second", "background", task("second", second.promise)),
+    queue.schedule("third", "background", task("third")),
+  ]
+  await Promise.resolve()
+  expect(started).toEqual(["first", "second"])
+
+  const user = queue.schedule("opened", "user", task("opened", opened.promise))
+  await Promise.resolve()
+  expect(started).toEqual(["first", "second", "opened"])
+
+  opened.resolve()
+  await user
+  first.resolve()
+  second.resolve()
+  await Promise.all(running)
+  expect(started).toEqual(["first", "second", "opened", "third"])
+  expect(maximum).toBe(3)
+})
+
+test("does not reuse stale pending picker listings", () => {
+  const listing = {
+    generation: 1,
+    request: new Promise<unknown>(() => {}),
+    settled: false,
+  }
+
+  expect(reusablePickerListing(listing, 1)).toBe(listing)
+  expect(reusablePickerListing(listing, 2)).toBeUndefined()
+})
+
+test("reuses successful settled picker listings across generations", () => {
+  const nodes = [{ name: "src", type: "directory" as const }]
+  const listing = {
+    generation: 1,
+    request: Promise.resolve(nodes),
+    settled: true,
+    nodes,
+  }
+  const failed = {
+    generation: 1,
+    request: Promise.resolve(undefined),
+    settled: true,
+  }
+
+  expect(reusablePickerListing(listing, 2)).toBe(listing)
+  expect(reusablePickerListing(failed, 2)).toBeUndefined()
 })
 
 test("clamps bridged tree wheel scrolling", () => {

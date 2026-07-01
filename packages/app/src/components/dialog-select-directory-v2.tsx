@@ -29,8 +29,9 @@ import {
   pickerPathHasIgnoredPart,
   pickerRoot,
   preloadTreeDirectories,
+  reusablePickerListing,
 } from "./directory-picker-domain"
-import type { PickerNode } from "./directory-picker-domain"
+import type { PickerListingRequest, PickerNode } from "./directory-picker-domain"
 import "./dialog-select-directory-v2.css"
 import { DividerV2 } from "@opencode-ai/ui/v2/divider-v2"
 
@@ -43,7 +44,8 @@ interface DialogSelectDirectoryV2Props {
   start?: string
 }
 
-const TREE_PRELOAD_LIMIT = 24
+const TREE_PRELOAD_CHILD_LIMIT = 8
+const TREE_PRELOAD_TOTAL_LIMIT = 48
 const EXPANDED_CHILDREN_TO_REVEAL = 5
 
 export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
@@ -66,9 +68,10 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
   const [rootValid, setRootValid] = createSignal(false)
   const [showIgnored, setShowIgnored] = createSignal(false)
   const [ignoredCount, setIgnoredCount] = createSignal(0)
-  const listings = new Map<string, Promise<PickerNode[] | undefined>>()
-  const loads = createPriorityTaskQueue<PickerNode[] | undefined>(3)
+  const listings = new Map<string, PickerListingRequest<PickerNode[]>>()
+  const loads = createPriorityTaskQueue<PickerNode[] | undefined>(3, 2)
   const advanced = new Set<string>()
+  const preloaded = new Set<string>()
   const loaded = new Set<string>()
   const loadedChildCount = new Map<string, number>()
   const loadingPaths = new Set<string>()
@@ -187,6 +190,19 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
   })
   const currentSuggestions = createMemo(() => currentPickerSuggestions(suggestions(), input()))
 
+  function schedulePreloads(path: string, nodes: PickerNode[], generation: number) {
+    const targets = preloadTreeDirectories(path, nodes).slice(0, TREE_PRELOAD_CHILD_LIMIT)
+    void Promise.all(
+      targets.flatMap((directory) => {
+        const key = treePathKey(directory)
+        if (preloaded.has(key) || loaded.has(key) || reusablePickerListing(listings.get(key), generation)) return []
+        if (preloaded.size >= TREE_PRELOAD_TOTAL_LIMIT) return []
+        preloaded.add(key)
+        return [load(directory, generation, false)]
+      }),
+    )
+  }
+
   async function load(path: string, generation: number, preload = true, visible = false) {
     const key = treePathKey(path)
     const cachedChildCount = loadedChildCount.get(key) ?? 0
@@ -197,41 +213,65 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
     setError(false)
     if (visible) setPathLoading(path, true)
     const priority = preload || visible ? "user" : "background"
-    const existing = listings.get(key)
-    if (existing && priority === "user") loads.promote(`${generation}:${key}`)
+    const existing = reusablePickerListing(listings.get(key), generation)
+    if (existing && priority === "user" && existing.generation === generation && !existing.settled) {
+      loads.promote(`${generation}:${key}`)
+    }
     const visibleStartedAt = Date.now()
+    const listing =
+      existing ??
+      (() => {
+        const absolute = absoluteTreePath(root(), key)
+        const entry: PickerListingRequest<PickerNode[]> = {
+          generation,
+          request: Promise.resolve(undefined),
+          settled: false,
+        }
+        entry.request = loads
+          .schedule(`${generation}:${key}`, priority, () => {
+            if (!activeTreeNavigation(generation, navigation)) return Promise.resolve(undefined)
+            return sdk.client.file
+              .list({ directory: absolute, path: "" })
+              .then((result) => (result.data ?? []) as PickerNode[])
+              .catch(() => undefined)
+          })
+          .then((nodes) => {
+            entry.settled = true
+            if (nodes) entry.nodes = nodes
+            return nodes
+          }, () => {
+            entry.settled = true
+            return undefined
+          })
+        listings.set(key, entry)
+        return entry
+      })()
+    const currentListing = () => listings.get(key) === listing
     const clearVisibleLoading = async () => {
       if (!visible) return
       const remaining = 220 - (Date.now() - visibleStartedAt)
       if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining))
+      if (!currentListing()) return
       setPathLoading(key, false)
     }
-    const request =
-      existing ??
-      loads.schedule(`${generation}:${key}`, priority, () => {
-        if (!activeTreeNavigation(generation, navigation)) return Promise.resolve(undefined)
-        return sdk.client.file
-          .list({ directory: absoluteTreePath(root(), key), path: "" })
-          .then((result) => (result.data ?? []) as PickerNode[])
-          .catch(() => undefined)
-      })
-    listings.set(key, request)
-    const nodes = await request
+    const nodes = await listing.request
     if (!activeTreeNavigation(generation, navigation)) {
-      setPathLoading(key, false)
+      await clearVisibleLoading()
       return false
     }
     if (!nodes) {
-      listings.delete(key)
-      loaded.delete(key)
-      loadedChildCount.delete(key)
       await clearVisibleLoading()
-      if (!key) {
-        setIgnoredCount(0)
-        setError(true)
-      } else if (visible) {
-        erroredPaths.add(key)
-        syncLoadingPaths()
+      if (currentListing()) {
+        listings.delete(key)
+        loaded.delete(key)
+        loadedChildCount.delete(key)
+        if (!key) {
+          setIgnoredCount(0)
+          setError(true)
+        } else if (visible) {
+          erroredPaths.add(key)
+          syncLoadingPaths()
+        }
       }
       return false
     }
@@ -247,16 +287,14 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
       return true
     }
     const entries = policy.entries(key, visibleNodes)
+    await clearVisibleLoading()
+    if (!currentListing()) return false
     loaded.add(key)
     erroredPaths.delete(key)
     loadedChildCount.set(key, entries.length)
-    await clearVisibleLoading()
     tree?.batch(entries.map((item) => ({ type: "add", path: item })))
     if (visible) revealExpandedPath(path, entries.length)
-    if (preload && advanceTreePreload(advanced, key)) {
-      const preloadTargets = preloadTreeDirectories(key, visibleNodes).slice(0, TREE_PRELOAD_LIMIT)
-      void Promise.all(preloadTargets.map((directory) => load(directory, generation, false)))
-    }
+    if (preload && advanceTreePreload(advanced, key)) schedulePreloads(key, visibleNodes, generation)
     return true
   }
 
@@ -274,6 +312,7 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
     setInput(displayPickerPath(value, value, home()))
     listings.clear()
     advanced.clear()
+    preloaded.clear()
     loaded.clear()
     loadedChildCount.clear()
     loadingPaths.clear()
@@ -292,7 +331,7 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
     const loadedListings = await Promise.all(
       Array.from(loaded).map(async (path) => ({
         path,
-        nodes: await listings.get(path),
+        nodes: await listings.get(path)?.request,
       })),
     )
     if (!activeTreeNavigation(token, navigation)) return
