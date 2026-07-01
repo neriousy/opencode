@@ -1,6 +1,6 @@
 import "@pierre/trees/web-components"
 import { FileTree } from "@pierre/trees"
-import { Dialog, DialogFooter } from "@opencode-ai/ui/v2/dialog-v2"
+import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle } from "@opencode-ai/ui/v2/dialog-v2"
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
 import { TextInputV2 } from "@opencode-ai/ui/v2/text-input-v2"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -14,6 +14,7 @@ import {
   advanceTreePreload,
   cleanPickerInput,
   countPickerIgnoredNodes,
+  createPriorityTaskQueue,
   createDirectorySearch,
   currentPickerSuggestions,
   displayPickerPath,
@@ -31,6 +32,7 @@ import {
 } from "./directory-picker-domain"
 import type { PickerNode } from "./directory-picker-domain"
 import "./dialog-select-directory-v2.css"
+import { DividerV2 } from "@opencode-ai/ui/v2/divider-v2"
 
 interface DialogSelectDirectoryV2Props {
   title?: string
@@ -46,7 +48,7 @@ const EXPANDED_CHILDREN_TO_REVEAL = 5
 
 export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
   const global = useGlobal()
-  const { sync, sdk } = global.createServerCtx(props.server)
+  const { sync, sdk } = global.ensureServerCtx(props.server)
   const dialog = useDialog()
   const language = useLanguage()
   const policy = pickerMode(props.mode ?? "directory", props.start)
@@ -65,6 +67,7 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
   const [showIgnored, setShowIgnored] = createSignal(false)
   const [ignoredCount, setIgnoredCount] = createSignal(0)
   const listings = new Map<string, Promise<PickerNode[] | undefined>>()
+  const loads = createPriorityTaskQueue<PickerNode[] | undefined>(3)
   const advanced = new Set<string>()
   const loaded = new Set<string>()
   const loadedChildCount = new Map<string, number>()
@@ -193,6 +196,9 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
     }
     setError(false)
     if (visible) setPathLoading(path, true)
+    const priority = preload || visible ? "user" : "background"
+    const existing = listings.get(key)
+    if (existing && priority === "user") loads.promote(`${generation}:${key}`)
     const visibleStartedAt = Date.now()
     const clearVisibleLoading = async () => {
       if (!visible) return
@@ -201,11 +207,14 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
       setPathLoading(key, false)
     }
     const request =
-      listings.get(key) ??
-      sdk.client.file
-        .list({ directory: absoluteTreePath(root(), key), path: "" })
-        .then((result) => (result.data ?? []) as PickerNode[])
-        .catch(() => undefined)
+      existing ??
+      loads.schedule(`${generation}:${key}`, priority, () => {
+        if (!activeTreeNavigation(generation, navigation)) return Promise.resolve(undefined)
+        return sdk.client.file
+          .list({ directory: absoluteTreePath(root(), key), path: "" })
+          .then((result) => (result.data ?? []) as PickerNode[])
+          .catch(() => undefined)
+      })
     listings.set(key, request)
     const nodes = await request
     if (!activeTreeNavigation(generation, navigation)) {
@@ -497,8 +506,12 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
   })
 
   return (
-    <Dialog title={props.title ?? language.t("command.project.open")} size="large" class="directory-picker-v2">
-      <div class="directory-picker-v2-body">
+    <Dialog size="large" class="directory-picker-v2">
+      <DialogHeader>
+        <DialogTitle>{props.title ?? language.t("command.project.open")}</DialogTitle>
+      </DialogHeader>
+      <DividerV2 />
+      <DialogBody class="directory-picker-v2-body pt-4!">
         <div class="directory-picker-v2-location">
           <div class="directory-picker-v2-breadcrumbs" aria-label="Current folder">
             <Show when={breadcrumbs().length > 0} fallback={<span class="directory-picker-v2-location-empty">—</span>}>
@@ -622,7 +635,7 @@ export function DialogSelectDirectoryV2(props: DialogSelectDirectoryV2Props) {
           <span class="directory-picker-v2-selection-label">Selected:</span>
           <span class="directory-picker-v2-selection-value">{selectionPath()}</span>
         </div>
-      </div>
+      </DialogBody>
       <DialogFooter>
         <ButtonV2 variant="neutral" onClick={() => dialog.close()}>{language.t("common.cancel")}</ButtonV2>
         <ButtonV2 variant="contrast" disabled={!selectionPath()} onClick={resolve}>
